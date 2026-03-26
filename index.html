@@ -232,6 +232,61 @@
     }
     .type-btn:active { transform: scale(0.95); }
 
+    /* Strength slider */
+    .strength-control {
+      display: none;
+      align-items: center;
+      gap: 0.6rem;
+      margin: 0.5rem 1rem 0;
+      padding: 0.55rem 0.9rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      max-width: 480px;
+      width: calc(100% - 2rem);
+    }
+    .strength-control.visible { display: flex; }
+    .strength-label {
+      font-size: 0.75rem;
+      color: var(--text2);
+      white-space: nowrap;
+      font-weight: 500;
+    }
+    .strength-control input[type=range] {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    .strength-control input[type=range]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      cursor: pointer;
+      box-shadow: 0 2px 6px rgba(124,92,252,0.4);
+    }
+    .strength-control input[type=range]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border: none;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      cursor: pointer;
+    }
+    .strength-val {
+      font-size: 0.75rem;
+      color: var(--accent2);
+      font-weight: 700;
+      min-width: 1.2rem;
+      text-align: right;
+    }
+
     /* Hint */
     .hint {
       text-align: center;
@@ -391,6 +446,13 @@
     </button>
   </div>
 
+  <!-- Strength slider -->
+  <div class="strength-control" id="strengthControl">
+    <span class="strength-label">強度</span>
+    <input type="range" id="strengthSlider" min="1" max="10" value="5">
+    <span class="strength-val" id="strengthVal">5</span>
+  </div>
+
   <p class="hint" id="hint">
     <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
     顔をタップしてモザイクを切り替え
@@ -445,15 +507,32 @@
     let faces = [];
     let displayScale = 1;
     let mosaicType = 'pixel';
+    let mosaicStrength = 5;
 
     // --- Mosaic type selection ---
+    const strengthControl = document.getElementById('strengthControl');
+    const strengthSlider = document.getElementById('strengthSlider');
+    const strengthVal = document.getElementById('strengthVal');
+
     document.querySelectorAll('.type-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         mosaicType = btn.dataset.type;
+        // fill type has no meaningful strength
+        if (mosaicType === 'fill') {
+          strengthControl.classList.remove('visible');
+        } else if (faces.length > 0) {
+          strengthControl.classList.add('visible');
+        }
         render();
       });
+    });
+
+    strengthSlider.addEventListener('input', () => {
+      mosaicStrength = parseInt(strengthSlider.value);
+      strengthVal.textContent = mosaicStrength;
+      render();
     });
 
     // --- Model loading ---
@@ -536,6 +615,7 @@
         faceCount.innerHTML = `<strong>${faces.length}</strong> 人の顔を検出`;
         faceCount.classList.add('visible');
         mosaicTypes.classList.add('visible');
+        if (mosaicType !== 'fill') strengthControl.classList.add('visible');
         hint.classList.add('visible');
         actions.classList.add('visible');
       };
@@ -547,38 +627,58 @@
       ctx.drawImage(originalImage, 0, 0);
       faces.forEach(f => {
         if (f.mosaic) {
-          if (mosaicType === 'pixel') applyPixel(f.box);
-          else if (mosaicType === 'blur') applyBlur(f.box);
+          if (mosaicType === 'pixel') applyPixel(f.box, mosaicStrength);
+          else if (mosaicType === 'blur') applyBlur(f.box, mosaicStrength);
           else if (mosaicType === 'fill') applyFill(f.box);
         }
       });
     }
 
-    function applyPixel(box) {
-      const blockSize = Math.max(8, Math.round(Math.min(box.width, box.height) / 8));
+    // Natural pixel mosaic using block-average color
+    function applyPixel(box, strength) {
+      const blockSize = Math.round(4 + strength * 2.2); // 6–26px
       const { x, y, width: w, height: h } = box;
-      for (let bx = x; bx < x + w; bx += blockSize) {
-        for (let by = y; by < y + h; by += blockSize) {
-          const sw = Math.min(blockSize, x + w - bx);
-          const sh = Math.min(blockSize, y + h - by);
-          const data = ctx.getImageData(bx, by, 1, 1).data;
-          ctx.fillStyle = `rgb(${data[0]},${data[1]},${data[2]})`;
-          ctx.fillRect(bx, by, sw, sh);
+      const imgData = ctx.getImageData(x, y, w, h).data;
+
+      for (let bx = 0; bx < w; bx += blockSize) {
+        for (let by = 0; by < h; by += blockSize) {
+          const bw = Math.min(blockSize, w - bx);
+          const bh = Math.min(blockSize, h - by);
+          let r = 0, g = 0, b = 0, count = 0;
+          for (let px = bx; px < bx + bw; px++) {
+            for (let py = by; py < by + bh; py++) {
+              const i = (py * w + px) * 4;
+              r += imgData[i]; g += imgData[i + 1]; b += imgData[i + 2];
+              count++;
+            }
+          }
+          ctx.fillStyle = `rgb(${Math.round(r/count)},${Math.round(g/count)},${Math.round(b/count)})`;
+          ctx.fillRect(x + bx, y + by, bw, bh);
         }
       }
     }
 
-    function applyBlur(box) {
+    // Gaussian blur via offscreen canvas (avoids same-canvas filter artifacts)
+    function applyBlur(box, strength) {
       const { x, y, width: w, height: h } = box;
-      const amount = Math.max(10, Math.round(Math.min(w, h) / 5));
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x, y, w, h);
-      ctx.clip();
-      ctx.filter = `blur(${amount}px)`;
-      ctx.drawImage(originalImage, 0, 0);
-      ctx.filter = 'none';
-      ctx.restore();
+      const radius = Math.round(4 + strength * 3.5); // 8–39px
+      const pad = radius * 2;
+
+      // Sample a padded region to avoid edge darkening
+      const sx = Math.max(0, x - pad);
+      const sy = Math.max(0, y - pad);
+      const sw = Math.min(originalImage.width - sx, w + pad * 2);
+      const sh = Math.min(originalImage.height - sy, h + pad * 2);
+
+      const tmp = document.createElement('canvas');
+      tmp.width = sw;
+      tmp.height = sh;
+      const tctx = tmp.getContext('2d');
+      tctx.filter = `blur(${radius}px)`;
+      tctx.drawImage(originalImage, sx, sy, sw, sh, 0, 0, sw, sh);
+
+      // Copy only the face region (without pad) back
+      ctx.drawImage(tmp, x - sx, y - sy, w, h, x, y, w, h);
     }
 
     function applyFill(box) {
@@ -704,6 +804,7 @@
       actions.classList.remove('visible');
       faceCount.classList.remove('visible');
       mosaicTypes.classList.remove('visible');
+      strengthControl.classList.remove('visible');
       errorMsg.classList.remove('visible');
       uploadArea.style.display = '';
       fileInput.value = '';
