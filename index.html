@@ -460,10 +460,11 @@
 
   <div class="actions" id="actions">
     <button class="btn-primary" id="btnDownload">
-      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <!-- icon swapped in JS based on share support -->
+      <svg id="btnDownloadIcon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
       </svg>
-      ダウンロード
+      <span id="btnDownloadLabel">ダウンロード</span>
     </button>
     <button class="btn-secondary" id="btnMosaicAll">
       <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -804,11 +805,39 @@
       render();
     });
 
+    // Update button label/icon based on Web Share API availability
+    const canShareFiles = () => {
+      try {
+        return navigator.canShare && navigator.canShare({ files: [new File([], 'test.png', { type: 'image/png' })] });
+      } catch { return false; }
+    };
+    if (canShareFiles()) {
+      document.getElementById('btnDownloadLabel').textContent = '保存 / 共有';
+      document.getElementById('btnDownloadIcon').innerHTML =
+        '<path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13"/>'; // share icon
+    }
+
     document.getElementById('btnDownload').addEventListener('click', () => {
-      const link = document.createElement('a');
-      link.download = 'faceseal_' + Date.now() + '.png';
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      canvas.toBlob(async (blob) => {
+        const filename = 'faceseal_' + Date.now() + '.png';
+        // Try Web Share API (mobile: shows "Save Image" / share sheet)
+        if (canShareFiles()) {
+          const file = new File([blob], filename, { type: 'image/png' });
+          try {
+            await navigator.share({ files: [file], title: 'FaceSeal' });
+            return;
+          } catch (e) {
+            if (e.name === 'AbortError') return; // user cancelled
+          }
+        }
+        // Fallback: download link
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = filename;
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
     });
 
     document.getElementById('btnReset').addEventListener('click', () => {
