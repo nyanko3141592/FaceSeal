@@ -2,183 +2,371 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>FaceSeal - 顔モザイク</title>
   <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --accent: #7c5cfc;
+      --accent2: #c084fc;
+      --bg: #0a0a0f;
+      --surface: #15151e;
+      --surface2: #1e1e2e;
+      --border: #2a2a3a;
+      --text: #eaeaf0;
+      --text2: #8888a0;
+      --radius: 16px;
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { background: var(--bg); }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f0f0f;
-      color: #e0e0e0;
-      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro', 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
+      padding: env(safe-area-inset-top, 0px) 0 0;
+      overflow-x: hidden;
     }
-    header {
-      padding: 2rem 1rem 1rem;
-      text-align: center;
-    }
-    header h1 {
-      font-size: 1.8rem;
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-    header p { color: #888; margin-top: 0.3rem; font-size: 0.9rem; }
 
+    /* Header */
+    header {
+      padding: 2.5rem 1.5rem 0.5rem;
+      text-align: center;
+      width: 100%;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+    }
+    .logo-icon svg { width: 20px; height: 20px; }
+    header p {
+      color: var(--text2);
+      margin-top: 0.4rem;
+      font-size: 0.85rem;
+      font-weight: 400;
+    }
+
+    /* Upload */
     .upload-area {
-      margin: 1.5rem;
-      padding: 3rem 2rem;
-      border: 2px dashed #444;
-      border-radius: 16px;
+      margin: 1.5rem 1rem;
+      padding: 3rem 1.5rem;
+      background: var(--surface);
+      border: 1.5px dashed var(--border);
+      border-radius: var(--radius);
       text-align: center;
       cursor: pointer;
-      transition: border-color 0.2s;
-      max-width: 600px;
+      transition: all 0.25s ease;
+      max-width: 480px;
       width: calc(100% - 2rem);
     }
     .upload-area:hover, .upload-area.dragover {
-      border-color: #667eea;
+      border-color: var(--accent);
+      background: var(--surface2);
+      transform: scale(1.01);
     }
-    .upload-area svg { margin-bottom: 1rem; }
+    .upload-area:active { transform: scale(0.99); }
+    .upload-icon {
+      width: 56px; height: 56px;
+      margin: 0 auto 1rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      box-shadow: 0 8px 24px rgba(124, 92, 252, 0.25);
+    }
+    .upload-icon svg { width: 26px; height: 26px; }
+    .upload-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 0.3rem;
+    }
+    .upload-sub {
+      font-size: 0.8rem;
+      color: var(--text2);
+    }
     .upload-area input { display: none; }
 
+    /* Status */
     #status {
       margin: 1rem;
-      padding: 0.8rem 1.5rem;
-      border-radius: 8px;
-      background: #1a1a2e;
+      padding: 0.75rem 1.25rem;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
       display: none;
-      font-size: 0.9rem;
+      font-size: 0.85rem;
+      text-align: center;
+      backdrop-filter: blur(8px);
     }
-    #status.loading { display: block; }
+    #status.loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+    }
     .spinner {
-      display: inline-block;
-      width: 14px; height: 14px;
-      border: 2px solid #667eea;
+      width: 18px; height: 18px;
+      border: 2.5px solid var(--accent);
       border-top-color: transparent;
       border-radius: 50%;
-      animation: spin 0.6s linear infinite;
-      vertical-align: middle;
-      margin-right: 0.5rem;
+      animation: spin 0.7s linear infinite;
+      flex-shrink: 0;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* Progress bar */
+    .progress-bar {
+      width: 100%;
+      max-width: 200px;
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      border-radius: 2px;
+      animation: progress 2s ease-in-out infinite;
+      width: 40%;
+    }
+    @keyframes progress {
+      0% { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+
+    /* Canvas */
     .canvas-wrapper {
       position: relative;
-      margin: 1rem;
+      margin: 0.75rem;
       display: none;
       max-width: 95vw;
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.4);
     }
-    .canvas-wrapper.visible { display: block; }
-    canvas { display: block; max-width: 100%; border-radius: 12px; cursor: pointer; }
+    .canvas-wrapper.visible {
+      display: block;
+      animation: fadeUp 0.4s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    canvas { display: block; max-width: 100%; cursor: pointer; touch-action: manipulation; }
 
+    /* Face count badge */
+    .face-count {
+      display: none;
+      margin: 0.75rem auto 0;
+      padding: 0.35rem 0.8rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.78rem;
+      color: var(--text2);
+      text-align: center;
+      width: fit-content;
+    }
+    .face-count.visible { display: block; }
+    .face-count strong { color: var(--accent2); font-weight: 600; }
+
+    /* Hint */
     .hint {
       text-align: center;
-      color: #888;
-      font-size: 0.85rem;
+      color: var(--text2);
+      font-size: 0.8rem;
       margin-top: 0.5rem;
       display: none;
+      animation: fadeUp 0.4s ease 0.2s both;
     }
-    .hint.visible { display: block; }
+    .hint.visible { display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+    .hint svg { width: 14px; height: 14px; flex-shrink: 0; }
 
+    /* Action buttons */
     .actions {
-      margin: 1rem;
+      position: sticky;
+      bottom: 0;
+      width: 100%;
+      max-width: 480px;
+      padding: 1rem 1rem calc(1rem + var(--safe-bottom));
       display: none;
-      gap: 0.8rem;
-      flex-wrap: wrap;
-      justify-content: center;
+      gap: 0.5rem;
+      background: linear-gradient(to top, var(--bg) 60%, transparent);
+      z-index: 10;
     }
-    .actions.visible { display: flex; }
+    .actions.visible {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      animation: fadeUp 0.4s ease 0.3s both;
+    }
     .actions button {
-      padding: 0.6rem 1.2rem;
+      padding: 0.85rem 1rem;
       border: none;
-      border-radius: 8px;
+      border-radius: 12px;
       font-size: 0.9rem;
+      font-weight: 600;
       cursor: pointer;
-      transition: transform 0.1s, opacity 0.2s;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
     }
     .actions button:active { transform: scale(0.96); }
-    #btnDownload {
-      background: linear-gradient(135deg, #667eea, #764ba2);
+    .actions button svg { width: 18px; height: 18px; flex-shrink: 0; }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff;
+      grid-column: 1 / -1;
+      box-shadow: 0 4px 16px rgba(124, 92, 252, 0.3);
     }
-    #btnReset {
-      background: #2a2a2a;
-      color: #ccc;
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border) !important;
     }
-    #btnMosaicAll {
-      background: #2a2a2a;
-      color: #ccc;
+    .btn-secondary:active { background: var(--surface); }
+
+    /* Error state */
+    .error-msg {
+      display: none;
+      text-align: center;
+      padding: 1.5rem;
+      margin: 1rem;
+      background: var(--surface);
+      border: 1px solid #3a2020;
+      border-radius: var(--radius);
+      max-width: 480px;
+      width: calc(100% - 2rem);
     }
+    .error-msg.visible { display: block; animation: fadeUp 0.3s ease; }
+    .error-msg p { color: var(--text2); font-size: 0.85rem; margin-top: 0.3rem; }
+    .error-msg .error-title { color: #f87171; font-weight: 600; font-size: 0.95rem; }
+
+    /* Footer spacer */
+    .spacer { height: calc(1rem + var(--safe-bottom)); flex-shrink: 0; }
   </style>
 </head>
 <body>
   <header>
-    <h1>FaceSeal</h1>
-    <p>画像をアップロード → 顔を自動検出 → モザイク</p>
+    <div class="logo">
+      <div class="logo-icon">
+        <svg fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2v-4M9 21H5a2 2 0 01-2-2v-4"/>
+        </svg>
+      </div>
+      FaceSeal
+    </div>
+    <p>顔を自動検出してモザイクをかける</p>
   </header>
 
   <div class="upload-area" id="uploadArea">
-    <svg width="48" height="48" fill="none" stroke="#667eea" stroke-width="1.5" viewBox="0 0 24 24">
-      <path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
-    </svg>
-    <p>画像をドロップ または クリックして選択</p>
+    <div class="upload-icon">
+      <svg fill="none" stroke="#fff" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M12 16V4m0 0L8 8m4-4l4 4"/>
+        <path d="M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
+      </svg>
+    </div>
+    <p class="upload-title">画像をアップロード</p>
+    <p class="upload-sub">タップして選択 または ドラッグ&ドロップ</p>
     <input type="file" id="fileInput" accept="image/*">
   </div>
 
-  <div id="status"><span class="spinner"></span>顔を検出中...</div>
+  <div id="status">
+    <span class="spinner"></span>
+    <div>
+      <div>顔を検出しています...</div>
+      <div class="progress-bar"><div class="progress-bar-fill"></div></div>
+    </div>
+  </div>
+
+  <div class="error-msg" id="errorMsg">
+    <div class="error-title">顔が検出されませんでした</div>
+    <p>別の画像をお試しください</p>
+  </div>
 
   <div class="canvas-wrapper" id="canvasWrapper">
     <canvas id="canvas"></canvas>
   </div>
-  <p class="hint" id="hint">顔をタップするとモザイクを切り替えできます</p>
+  <div class="face-count" id="faceCount"></div>
+  <p class="hint" id="hint">
+    <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M15 15l-2 5L9 9l11 4-5 2zm0 0l5 5"/></svg>
+    顔をタップしてモザイクを切り替え
+  </p>
 
   <div class="actions" id="actions">
-    <button id="btnMosaicAll">全てモザイク</button>
-    <button id="btnDownload">ダウンロード</button>
-    <button id="btnReset">別の画像</button>
+    <button class="btn-primary" id="btnDownload">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M12 4v12m0 0l-4-4m4 4l4-4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
+      </svg>
+      ダウンロード
+    </button>
+    <button class="btn-secondary" id="btnMosaicAll">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M4 4h4v4H4zM4 10h4v4H4zM10 4h4v4h-4zM10 10h4v4h-4zM16 4h4v4h-4zM16 10h4v4h-4z"/>
+      </svg>
+      全てモザイク
+    </button>
+    <button class="btn-secondary" id="btnReset">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M4 4v5h5M20 20v-5h-5"/><path d="M20.49 9A9 9 0 005.64 5.64L4 4m16 16l-1.64-1.64A9 9 0 014.51 15"/>
+      </svg>
+      別の画像
+    </button>
   </div>
+
+  <div class="spacer"></div>
 
   <script>
     const uploadArea = document.getElementById('uploadArea');
     const fileInput = document.getElementById('fileInput');
     const status = document.getElementById('status');
+    const errorMsg = document.getElementById('errorMsg');
     const canvasWrapper = document.getElementById('canvasWrapper');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const hint = document.getElementById('hint');
     const actions = document.getElementById('actions');
+    const faceCount = document.getElementById('faceCount');
 
     let originalImage = null;
-    let faces = []; // { box, mosaic: true/false }
+    let faces = [];
     let displayScale = 1;
-    let modelsLoaded = false;
 
-    // Load face-api models
     async function loadModels() {
       const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model/';
       await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
-      modelsLoaded = true;
     }
 
     const modelsPromise = new Promise(resolve => {
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => loadModels().then(resolve));
-      } else {
-        // face-api.js might not be loaded yet since it's defer
-        const check = setInterval(() => {
-          if (typeof faceapi !== 'undefined') {
-            clearInterval(check);
-            loadModels().then(resolve);
-          }
-        }, 100);
-      }
+      const check = setInterval(() => {
+        if (typeof faceapi !== 'undefined') {
+          clearInterval(check);
+          loadModels().then(resolve);
+        }
+      }, 100);
     });
 
-    // Upload handlers
     uploadArea.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', e => {
       if (e.target.files[0]) handleFile(e.target.files[0]);
@@ -198,6 +386,7 @@
       if (!file.type.startsWith('image/')) return;
 
       status.classList.add('loading');
+      errorMsg.classList.remove('visible');
       uploadArea.style.display = 'none';
 
       const img = new Image();
@@ -206,18 +395,11 @@
         canvas.width = img.width;
         canvas.height = img.height;
 
-        // Fit canvas display to viewport
         const maxW = window.innerWidth * 0.95;
-        if (img.width > maxW) {
-          displayScale = maxW / img.width;
-          canvas.style.width = maxW + 'px';
-        } else {
-          displayScale = 1;
-          canvas.style.width = '';
-        }
+        displayScale = img.width > maxW ? maxW / img.width : 1;
+        canvas.style.width = displayScale < 1 ? maxW + 'px' : '';
 
         ctx.drawImage(img, 0, 0);
-
         await modelsPromise;
 
         const detections = await faceapi.detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }));
@@ -235,14 +417,15 @@
         status.classList.remove('loading');
 
         if (faces.length === 0) {
-          status.style.display = 'block';
-          status.innerHTML = '顔が検出されませんでした。別の画像をお試しください。';
+          errorMsg.classList.add('visible');
           uploadArea.style.display = '';
           return;
         }
 
         render();
         canvasWrapper.classList.add('visible');
+        faceCount.innerHTML = `<strong>${faces.length}</strong> 人の顔を検出`;
+        faceCount.classList.add('visible');
         hint.classList.add('visible');
         actions.classList.add('visible');
       };
@@ -258,8 +441,7 @@
 
     function applyMosaic(box) {
       const blockSize = Math.max(8, Math.round(Math.min(box.width, box.height) / 8));
-      const x = box.x, y = box.y, w = box.width, h = box.height;
-
+      const { x, y, width: w, height: h } = box;
       for (let bx = x; bx < x + w; bx += blockSize) {
         for (let by = y; by < y + h; by += blockSize) {
           const sw = Math.min(blockSize, x + w - bx);
@@ -271,7 +453,6 @@
       }
     }
 
-    // Click/tap to toggle mosaic
     canvas.addEventListener('click', e => {
       const rect = canvas.getBoundingClientRect();
       const cx = (e.clientX - rect.left) / displayScale;
@@ -285,11 +466,9 @@
           toggled = true;
         }
       });
-
       if (toggled) render();
     });
 
-    // Buttons
     document.getElementById('btnMosaicAll').addEventListener('click', () => {
       faces.forEach(f => f.mosaic = true);
       render();
@@ -308,9 +487,12 @@
       canvasWrapper.classList.remove('visible');
       hint.classList.remove('visible');
       actions.classList.remove('visible');
+      faceCount.classList.remove('visible');
+      errorMsg.classList.remove('visible');
       uploadArea.style.display = '';
       fileInput.value = '';
-      status.style.display = 'none';
+      status.style.display = '';
+      status.classList.remove('loading');
     });
   </script>
 </body>
