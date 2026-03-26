@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FaceSeal - 顔モザイク</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    header {
+      padding: 2rem 1rem 1rem;
+      text-align: center;
+    }
+    header h1 {
+      font-size: 1.8rem;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    header p { color: #888; margin-top: 0.3rem; font-size: 0.9rem; }
+
+    .upload-area {
+      margin: 1.5rem;
+      padding: 3rem 2rem;
+      border: 2px dashed #444;
+      border-radius: 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      max-width: 600px;
+      width: calc(100% - 2rem);
+    }
+    .upload-area:hover, .upload-area.dragover {
+      border-color: #667eea;
+    }
+    .upload-area svg { margin-bottom: 1rem; }
+    .upload-area input { display: none; }
+
+    #status {
+      margin: 1rem;
+      padding: 0.8rem 1.5rem;
+      border-radius: 8px;
+      background: #1a1a2e;
+      display: none;
+      font-size: 0.9rem;
+    }
+    #status.loading { display: block; }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #667eea;
+      border-top-color: transparent;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      vertical-align: middle;
+      margin-right: 0.5rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .canvas-wrapper {
+      position: relative;
+      margin: 1rem;
+      display: none;
+      max-width: 95vw;
+    }
+    .canvas-wrapper.visible { display: block; }
+    canvas { display: block; max-width: 100%; border-radius: 12px; cursor: pointer; }
+
+    .hint {
+      text-align: center;
+      color: #888;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+      display: none;
+    }
+    .hint.visible { display: block; }
+
+    .actions {
+      margin: 1rem;
+      display: none;
+      gap: 0.8rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .actions.visible { display: flex; }
+    .actions button {
+      padding: 0.6rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .actions button:active { transform: scale(0.96); }
+    #btnDownload {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+    }
+    #btnReset {
+      background: #2a2a2a;
+      color: #ccc;
+    }
+    #btnMosaicAll {
+      background: #2a2a2a;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>FaceSeal</h1>
+    <p>画像をアップロード → 顔を自動検出 → モザイク</p>
+  </header>
+
+  <div class="upload-area" id="uploadArea">
+    <svg width="48" height="48" fill="none" stroke="#667eea" stroke-width="1.5" viewBox="0 0 24 24">
+      <path d="M12 16V4m0 0L8 8m4-4l4 4M4 17v2a1 1 0 001 1h14a1 1 0 001-1v-2"/>
+    </svg>
+    <p>画像をドロップ または クリックして選択</p>
+    <input type="file" id="fileInput" accept="image/*">
+  </div>
+
+  <div id="status"><span class="spinner"></span>顔を検出中...</div>
+
+  <div class="canvas-wrapper" id="canvasWrapper">
+    <canvas id="canvas"></canvas>
+  </div>
+  <p class="hint" id="hint">顔をタップするとモザイクを切り替えできます</p>
+
+  <div class="actions" id="actions">
+    <button id="btnMosaicAll">全てモザイク</button>
+    <button id="btnDownload">ダウンロード</button>
+    <button id="btnReset">別の画像</button>
+  </div>
+
+  <script>
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInput = document.getElementById('fileInput');
+    const status = document.getElementById('status');
+    const canvasWrapper = document.getElementById('canvasWrapper');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const hint = document.getElementById('hint');
+    const actions = document.getElementById('actions');
+
+    let originalImage = null;
+    let faces = []; // { box, mosaic: true/false }
+    let displayScale = 1;
+    let modelsLoaded = false;
+
+    // Load face-api models
+    async function loadModels() {
+      const MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.14/model/';
+      await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
+      modelsLoaded = true;
+    }
+
+    const modelsPromise = new Promise(resolve => {
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => loadModels().then(resolve));
+      } else {
+        // face-api.js might not be loaded yet since it's defer
+        const check = setInterval(() => {
+          if (typeof faceapi !== 'undefined') {
+            clearInterval(check);
+            loadModels().then(resolve);
+          }
+        }, 100);
+      }
+    });
+
+    // Upload handlers
+    uploadArea.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => {
+      if (e.target.files[0]) handleFile(e.target.files[0]);
+    });
+    uploadArea.addEventListener('dragover', e => {
+      e.preventDefault();
+      uploadArea.classList.add('dragover');
+    });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+    });
+
+    async function handleFile(file) {
+      if (!file.type.startsWith('image/')) return;
+
+      status.classList.add('loading');
+      uploadArea.style.display = 'none';
+
+      const img = new Image();
+      img.onload = async () => {
+        originalImage = img;
+        canvas.width = img.width;
+        canvas.height = img.height;
+
+        // Fit canvas display to viewport
+        const maxW = window.innerWidth * 0.95;
+        if (img.width > maxW) {
+          displayScale = maxW / img.width;
+          canvas.style.width = maxW + 'px';
+        } else {
+          displayScale = 1;
+          canvas.style.width = '';
+        }
+
+        ctx.drawImage(img, 0, 0);
+
+        await modelsPromise;
+
+        const detections = await faceapi.detectAllFaces(canvas, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.4 }));
+
+        faces = detections.map(d => ({
+          box: {
+            x: Math.round(d.box.x),
+            y: Math.round(d.box.y),
+            width: Math.round(d.box.width),
+            height: Math.round(d.box.height),
+          },
+          mosaic: true
+        }));
+
+        status.classList.remove('loading');
+
+        if (faces.length === 0) {
+          status.style.display = 'block';
+          status.innerHTML = '顔が検出されませんでした。別の画像をお試しください。';
+          uploadArea.style.display = '';
+          return;
+        }
+
+        render();
+        canvasWrapper.classList.add('visible');
+        hint.classList.add('visible');
+        actions.classList.add('visible');
+      };
+      img.src = URL.createObjectURL(file);
+    }
+
+    function render() {
+      ctx.drawImage(originalImage, 0, 0);
+      faces.forEach(f => {
+        if (f.mosaic) applyMosaic(f.box);
+      });
+    }
+
+    function applyMosaic(box) {
+      const blockSize = Math.max(8, Math.round(Math.min(box.width, box.height) / 8));
+      const x = box.x, y = box.y, w = box.width, h = box.height;
+
+      for (let bx = x; bx < x + w; bx += blockSize) {
+        for (let by = y; by < y + h; by += blockSize) {
+          const sw = Math.min(blockSize, x + w - bx);
+          const sh = Math.min(blockSize, y + h - by);
+          const data = ctx.getImageData(bx, by, 1, 1).data;
+          ctx.fillStyle = `rgb(${data[0]},${data[1]},${data[2]})`;
+          ctx.fillRect(bx, by, sw, sh);
+        }
+      }
+    }
+
+    // Click/tap to toggle mosaic
+    canvas.addEventListener('click', e => {
+      const rect = canvas.getBoundingClientRect();
+      const cx = (e.clientX - rect.left) / displayScale;
+      const cy = (e.clientY - rect.top) / displayScale;
+
+      let toggled = false;
+      faces.forEach(f => {
+        const b = f.box;
+        if (cx >= b.x && cx <= b.x + b.width && cy >= b.y && cy <= b.y + b.height) {
+          f.mosaic = !f.mosaic;
+          toggled = true;
+        }
+      });
+
+      if (toggled) render();
+    });
+
+    // Buttons
+    document.getElementById('btnMosaicAll').addEventListener('click', () => {
+      faces.forEach(f => f.mosaic = true);
+      render();
+    });
+
+    document.getElementById('btnDownload').addEventListener('click', () => {
+      const link = document.createElement('a');
+      link.download = 'faceseal_' + Date.now() + '.png';
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      faces = [];
+      originalImage = null;
+      canvasWrapper.classList.remove('visible');
+      hint.classList.remove('visible');
+      actions.classList.remove('visible');
+      uploadArea.style.display = '';
+      fileInput.value = '';
+      status.style.display = 'none';
+    });
+  </script>
+</body>
+</html>
