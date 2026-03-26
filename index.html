@@ -636,7 +636,7 @@
 
     // Natural pixel mosaic using block-average color
     function applyPixel(box, strength) {
-      const blockSize = Math.round(4 + strength * 2.2); // 6–26px
+      const blockSize = Math.round(6 + (strength - 1) * 9); // 6–87px
       const { x, y, width: w, height: h } = box;
       const imgData = ctx.getImageData(x, y, w, h).data;
 
@@ -658,27 +658,42 @@
       }
     }
 
-    // Gaussian blur via offscreen canvas (avoids same-canvas filter artifacts)
+    // Blur via multi-step downsample→upsample (works in all browsers)
+    function makeCanvas(w, h) {
+      const c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      return c;
+    }
+    function resizeDraw(src, dst) {
+      const dctx = dst.getContext('2d');
+      dctx.imageSmoothingEnabled = true;
+      dctx.imageSmoothingQuality = 'high';
+      dctx.drawImage(src, 0, 0, dst.width, dst.height);
+      return dst;
+    }
+
     function applyBlur(box, strength) {
       const { x, y, width: w, height: h } = box;
-      const radius = Math.round(4 + strength * 3.5); // 8–39px
-      const pad = radius * 2;
+      // factor: strength 1→5, strength 10→50
+      const factor = Math.round(4 + strength * 4.6);
 
-      // Sample a padded region to avoid edge darkening
-      const sx = Math.max(0, x - pad);
-      const sy = Math.max(0, y - pad);
-      const sw = Math.min(originalImage.width - sx, w + pad * 2);
-      const sh = Math.min(originalImage.height - sy, h + pad * 2);
+      // Step 1: extract face region at full size
+      const full = makeCanvas(w, h);
+      full.getContext('2d').drawImage(originalImage, x, y, w, h, 0, 0, w, h);
 
-      const tmp = document.createElement('canvas');
-      tmp.width = sw;
-      tmp.height = sh;
-      const tctx = tmp.getContext('2d');
-      tctx.filter = `blur(${radius}px)`;
-      tctx.drawImage(originalImage, sx, sy, sw, sh, 0, 0, sw, sh);
+      // Step 2: downsample in 2 passes (smoother Gaussian-like result)
+      const mid = Math.max(1, Math.round(w / Math.sqrt(factor)));
+      const midH = Math.max(1, Math.round(h / Math.sqrt(factor)));
+      const tiny = Math.max(1, Math.round(w / factor));
+      const tinyH = Math.max(1, Math.round(h / factor));
 
-      // Copy only the face region (without pad) back
-      ctx.drawImage(tmp, x - sx, y - sy, w, h, x, y, w, h);
+      const step1 = resizeDraw(full, makeCanvas(mid, midH));
+      const step2 = resizeDraw(step1, makeCanvas(tiny, tinyH));
+
+      // Step 3: upsample back to face region on main canvas
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(step2, 0, 0, tiny, tinyH, x, y, w, h);
     }
 
     function applyFill(box) {
